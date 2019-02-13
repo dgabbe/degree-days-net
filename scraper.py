@@ -9,6 +9,10 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 
+import os
+import tempfile
+import time
+
 
 class lambda_succeeds(object):
     """
@@ -49,46 +53,94 @@ def select_gwt_dropdown(driver, option_count, desired_option_value):
     options.select_by_value(desired_option_value)
 
 
+def get_latest_file(directory, time_to_wait=60):
+    """
+    Return full pathname of the newest file in a directory. Based on https://stackoverflow.com/a/40518772
+    :param str directory:
+    :param int time_to_wait:
+    :return: complete path of newest file
+    """
+    def fn_by_ctime(fname):
+        try:
+            return os.path.getctime(os.path.join(directory, fname))
+        except FileNotFoundError:
+            return -1.0  # in case file is sym link
+
+    fn_newest_file = lambda: max([f for f in os.listdir(directory)], key=fn_by_ctime)
+
+    filename = fn_newest_file()
+    time_counter = 0
+    while '.part' in filename or '.crdownload' in filename:  # firefox, chrome
+        time.sleep(1)
+        time_counter += 1
+        if time_counter > time_to_wait:
+            raise Exception('Waited too long for file to download')
+
+    return os.path.join(directory, fn_newest_file())
+
+
 def scrape(url, weather_station, base_temp, period_covered):
-    # set options to bypass download dialog
+    """
+
+    :param str url:
+    :param str weather_station:
+    :param str base_temp:
+    :param str period_covered:
+    :return: complete pathname of downloaded CSV
+    :rtype: str
+    """
+    # options to skip download dialog - http://allselenium.info/file-downloads-python-selenium-webdriver/
     options = Options()
     options.set_preference("browser.download.folderList", 2)
     options.set_preference("browser.download.manager.showWhenStarting", False)
-    options.set_preference("browser.download.dir", "/tmp")
-    options.set_preference("browser.helperApps.neverAsk.saveToDisk",
-                           "application/octet-stream, application/vnd.ms-excel, text/csv")
 
-    driver = webdriver.Firefox(options=options)  # type: WebDriver
-    driver.get(url)
+    with tempfile.TemporaryDirectory() as download_directory:
+        options.set_preference("browser.download.dir", download_directory)
 
-    # GWT takes forever to appear on page
-    wait_for_gwt_panel(driver)
+        downloadable_mimetypes = ', '.join([
+            'application/csv',
+            'application/pdf',
+            'application/zip',
+            'text/csv',
+            'text/plain',
+        ])
+        options.set_preference("browser.helperApps.neverAsk.saveToDisk", downloadable_mimetypes)
 
-    # enter desired weather station
-    station_input = driver.find_element_by_css_selector(WEATHER_STATION_CSS)
-    station_input.clear()
-    station_input.send_keys(weather_station)
+        driver = webdriver.Firefox(options=options)  # type: WebDriver
+        driver.get(url)
 
-    # base temperature & period
-    select_gwt_dropdown(driver, 129, base_temp)
-    select_gwt_dropdown(driver, 37, period_covered)
+        # GWT takes forever to appear on page
+        wait_for_gwt_panel(driver)
 
-    # click the non-submit button (not a true submit button)
-    btn = driver.find_element_by_css_selector(GWT_SUBMIT_BUTTON_CSS)
-    btn.click()
+        # enter desired weather station
+        station_input = driver.find_element_by_css_selector(WEATHER_STATION_CSS)
+        station_input.clear()
+        station_input.send_keys(weather_station)
 
-    # wait for data to be ready
-    label = (By.CSS_SELECTOR, 'table.dataStatusPanel div.gwt-Label')
-    WebDriverWait(driver, 30).until(ec.text_to_be_present_in_element(label, 'Your degree days are ready'))
-    download_btn = driver.find_element_by_css_selector('table.dataStatusPanel div.downloadPanel button.gwt-Button')
-    download_btn.click()
+        # base temperature & period
+        select_gwt_dropdown(driver, 129, base_temp)
+        select_gwt_dropdown(driver, 37, period_covered)
 
-    # with driver.download_file() as filename:
-    #     File.copy(filename, final_dest) # start here & fix this call
-    # gwt is google web toolkit
-    # Wait for element on a page to go stale to know you have transitioned properly.
+        # click the non-submit button (not a true submit button)
+        btn = driver.find_element_by_css_selector(GWT_SUBMIT_BUTTON_CSS)
+        btn.click()
 
-    driver.quit()
+        # wait for data to be ready
+        label = (By.CSS_SELECTOR, 'table.dataStatusPanel div.gwt-Label')
+        WebDriverWait(driver, 30).until(ec.text_to_be_present_in_element(label, 'Your degree days are ready'))
+        download_btn = driver.find_element_by_css_selector('table.dataStatusPanel div.downloadPanel button.gwt-Button')
+        download_btn.click()
+
+        # with driver.download_file() as filename:
+        #     File.copy(filename, final_dest) # start here & fix this call
+        # gwt is google web toolkit
+        # Wait for element on a page to go stale to know you have transitioned properly.
+
+        time.sleep(1)  # hack to give browser time to save file
+        downloaded_file = get_latest_file(download_directory)
+        driver.quit()
+
+    return downloaded_file
 
 
 def all_displayed_dropdowns_loaded(driver):
@@ -119,4 +171,5 @@ if __name__ == "__main__":
     base_temp = "68"  # using drop down value!
     period_covered = "1"  # 1mon, using drop down value
 
-    scrape(url, weather_station, base_temp, period_covered)
+    csv_filename = scrape(url, weather_station, base_temp, period_covered)
+    print(csv_filename)
