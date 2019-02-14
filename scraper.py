@@ -10,7 +10,6 @@ from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 
 import os
-import tempfile
 import time
 
 
@@ -60,6 +59,7 @@ def get_latest_file(directory, time_to_wait=60):
     :param int time_to_wait:
     :return: complete path of newest file
     """
+
     def fn_by_ctime(fname):
         try:
             return os.path.getctime(os.path.join(directory, fname))
@@ -79,13 +79,14 @@ def get_latest_file(directory, time_to_wait=60):
     return os.path.join(directory, fn_newest_file())
 
 
-def scrape(url, weather_station, base_temp, period_covered):
+def scrape(url, weather_station, base_temp, period_covered, download_directory='/tmp'):
     """
 
     :param str url:
     :param str weather_station:
     :param str base_temp:
     :param str period_covered:
+    :param str download_directory: where to put the downloaded file
     :return: complete pathname of downloaded CSV
     :rtype: str
     """
@@ -94,51 +95,45 @@ def scrape(url, weather_station, base_temp, period_covered):
     options.set_preference("browser.download.folderList", 2)
     options.set_preference("browser.download.manager.showWhenStarting", False)
 
-    with tempfile.TemporaryDirectory() as download_directory:
-        options.set_preference("browser.download.dir", download_directory)
+    options.set_preference("browser.download.dir", download_directory)
 
-        downloadable_mimetypes = ', '.join([
-            'application/csv',
-            'application/pdf',
-            'application/zip',
-            'text/csv',
-            'text/plain',
-        ])
-        options.set_preference("browser.helperApps.neverAsk.saveToDisk", downloadable_mimetypes)
+    downloadable_mimetypes = ', '.join([
+        'application/csv',
+        'application/pdf',
+        'application/zip',
+        'text/csv',
+        'text/plain',
+    ])
+    options.set_preference("browser.helperApps.neverAsk.saveToDisk", downloadable_mimetypes)
 
-        driver = webdriver.Firefox(options=options)  # type: WebDriver
-        driver.get(url)
+    driver = webdriver.Firefox(options=options)  # type: WebDriver
+    driver.get(url)
 
-        # GWT takes forever to appear on page
-        wait_for_gwt_panel(driver)
+    # GWT takes forever to appear on page
+    wait_for_gwt_panel(driver)
 
-        # enter desired weather station
-        station_input = driver.find_element_by_css_selector(WEATHER_STATION_CSS)
-        station_input.clear()
-        station_input.send_keys(weather_station)
+    # enter desired weather station
+    station_input = driver.find_element_by_css_selector(WEATHER_STATION_CSS)
+    station_input.clear()
+    station_input.send_keys(weather_station)
 
-        # base temperature & period
-        select_gwt_dropdown(driver, 129, base_temp)
-        select_gwt_dropdown(driver, 37, period_covered)
+    # base temperature & period
+    select_gwt_dropdown(driver, 129, base_temp)
+    select_gwt_dropdown(driver, 37, period_covered)
 
-        # click the non-submit button (not a true submit button)
-        btn = driver.find_element_by_css_selector(GWT_SUBMIT_BUTTON_CSS)
-        btn.click()
+    # click the non-submit button (not a true submit button)
+    btn = driver.find_element_by_css_selector(GWT_SUBMIT_BUTTON_CSS)
+    btn.click()
 
-        # wait for data to be ready
-        label = (By.CSS_SELECTOR, 'table.dataStatusPanel div.gwt-Label')
-        WebDriverWait(driver, 30).until(ec.text_to_be_present_in_element(label, 'Your degree days are ready'))
-        download_btn = driver.find_element_by_css_selector('table.dataStatusPanel div.downloadPanel button.gwt-Button')
-        download_btn.click()
+    # wait for data to be ready
+    label = (By.CSS_SELECTOR, 'table.dataStatusPanel div.gwt-Label')
+    WebDriverWait(driver, 30).until(ec.text_to_be_present_in_element(label, 'Your degree days are ready'))
+    download_btn = driver.find_element_by_css_selector('table.dataStatusPanel div.downloadPanel button.gwt-Button')
+    download_btn.click()
 
-        # with driver.download_file() as filename:
-        #     File.copy(filename, final_dest) # start here & fix this call
-        # gwt is google web toolkit
-        # Wait for element on a page to go stale to know you have transitioned properly.
-
-        time.sleep(1)  # hack to give browser time to save file
-        downloaded_file = get_latest_file(download_directory)
-        driver.quit()
+    time.sleep(1)  # hack to give browser time to save file
+    downloaded_file = get_latest_file(download_directory)
+    driver.quit()
 
     return downloaded_file
 
@@ -166,10 +161,10 @@ def wait_for_gwt_panel(driver):
 
 
 if __name__ == "__main__":
-    url = "https://www.degreedays.net/"
-    weather_station = "KMABROOK44"
-    base_temp = "68"  # using drop down value!
-    period_covered = "1"  # 1mon, using drop down value
+    URL = "https://www.degreedays.net/"
+    WEATHER_STATION = "KMABROOK44"
+    BASE_TEMPERATURE = "68"  # using drop down value!
+    PERIOD_COVERED = "1"  # 1mon, using drop down value
 
-    csv_filename = scrape(url, weather_station, base_temp, period_covered)
+    csv_filename = scrape(URL, WEATHER_STATION, BASE_TEMPERATURE, PERIOD_COVERED)
     print(csv_filename)
