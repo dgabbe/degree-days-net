@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
@@ -8,8 +7,10 @@ from selenium.webdriver.firefox.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
-
+import csv
 import os
+import sqlite3 as lite
+import tempfile
 import time
 
 
@@ -79,11 +80,11 @@ def get_latest_file(directory, time_to_wait=60):
     return os.path.join(directory, fn_newest_file())
 
 
-def scrape(url, weather_station, base_temp, period_covered, download_directory='/tmp'):
+def scrape(url, weather_station_id, base_temp, period_covered, download_directory='/tmp'):
     """
 
     :param str url:
-    :param str weather_station:
+    :param str weather_station_id:
     :param str base_temp:
     :param str period_covered:
     :param str download_directory: where to put the downloaded file
@@ -115,7 +116,7 @@ def scrape(url, weather_station, base_temp, period_covered, download_directory='
     # enter desired weather station
     station_input = driver.find_element_by_css_selector(WEATHER_STATION_CSS)
     station_input.clear()
-    station_input.send_keys(weather_station)
+    station_input.send_keys(weather_station_id)
 
     # base temperature & period
     select_gwt_dropdown(driver, 129, base_temp)
@@ -136,6 +137,39 @@ def scrape(url, weather_station, base_temp, period_covered, download_directory='
     driver.quit()
 
     return downloaded_file
+
+
+def scrape_and_process(dbconn, url, weather_station_id, base_temp, period_covered):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        downloaded_file = scrape(url, weather_station_id, base_temp, period_covered, temp_dir)
+        lines = extract_csv_portion(downloaded_file)
+        reader = csv.DictReader(lines)
+        insert_db_rows(dbconn, reader, weather_station_id)
+
+
+def insert_db_rows(dbconn, reader, weather_station_id):
+    cur = dbconn.cursor()
+    for row in reader:
+        observed_at = row['Date']
+        hdd = row['HDD']
+        cur.execute("INSERT INTO t_degree_days(weather_station_id, observed_at, degree_days) VALUES(?, ?, ?)",
+                    [weather_station_id, observed_at, hdd])
+        dbconn.commit()
+
+
+def extract_csv_portion(fname):
+    lines = []
+    with open(fname, 'r') as file_handle:
+        seen_blank = False;
+        for line in file_handle:
+            stripped = line.strip()
+            if seen_blank:
+                lines.append(stripped)
+            else:
+                if stripped == '':
+                    seen_blank = True
+
+    return lines
 
 
 def all_displayed_dropdowns_loaded(driver):
@@ -162,9 +196,9 @@ def wait_for_gwt_panel(driver):
 
 if __name__ == "__main__":
     URL = "https://www.degreedays.net/"
-    WEATHER_STATION = "KMABROOK44"
+    WEATHER_STATION_ID = "KMABROOK44"
     BASE_TEMPERATURE = "68"  # using drop down value!
     PERIOD_COVERED = "1"  # 1mon, using drop down value
 
-    csv_filename = scrape(URL, WEATHER_STATION, BASE_TEMPERATURE, PERIOD_COVERED)
-    print(csv_filename)
+    dbconn = lite.connect('degree_days.db')
+    scrape_and_process(dbconn, URL, WEATHER_STATION_ID, BASE_TEMPERATURE, PERIOD_COVERED)
