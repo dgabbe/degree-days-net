@@ -9,6 +9,7 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support.ui import WebDriverWait
 
+from os import path # finish adding individual classes
 import os
 import time
 
@@ -28,9 +29,9 @@ class lambda_succeeds(object):
         return self.custom_lambda(driver)
 
 
-GWT_LIST_BOX_CSS = 'select.gwt-ListBox'
-GWT_SUBMIT_BUTTON_CSS = 'button.submitButton'
-WEATHER_STATION_CSS = 'input.gwt-TextBox'
+GWT_LIST_BOX_CSS = "select.gwt-ListBox"
+GWT_SUBMIT_BUTTON_CSS = "button.submitButton"
+WEATHER_STATION_CSS = "input.gwt-TextBox"
 
 
 # select an option, by value, from a GWT drop down
@@ -45,8 +46,12 @@ def select_gwt_dropdown(driver, option_count, desired_option_value):
     :rtype: NoneType
     """
     candidates = driver.find_elements_by_css_selector(GWT_LIST_BOX_CSS)
-    found_selects = [input for input in candidates if
-                     input.is_displayed() and option_count == len(input.find_elements_by_css_selector('option'))]
+    found_selects = [
+        input
+        for input in candidates
+        if input.is_displayed()
+        and option_count == len(input.find_elements_by_css_selector("option"))
+    ]
     temperature_select = found_selects[0]  # there should be 1
     options = Select(temperature_select)
     options.select_by_value(desired_option_value)
@@ -62,7 +67,7 @@ def get_latest_file(directory, time_to_wait=60):
 
     def fn_by_ctime(fname):
         try:
-            return os.path.getctime(os.path.join(directory, fname))
+            return path.getctime(path.join(directory, fname))
         except FileNotFoundError:
             return -1.0  # in case file is sym link
 
@@ -70,16 +75,16 @@ def get_latest_file(directory, time_to_wait=60):
 
     filename = fn_newest_file()
     time_counter = 0
-    while '.part' in filename or '.crdownload' in filename:  # firefox, chrome
+    while ".part" in filename or ".crdownload" in filename:  # firefox, chrome
         time.sleep(1)
         time_counter += 1
         if time_counter > time_to_wait:
-            raise Exception('Waited too long for file to download')
+            raise Exception("Waited too long for file to download")
 
-    return os.path.join(directory, fn_newest_file())
+    return path.join(directory, fn_newest_file())
 
 
-def scrape(url, weather_station, base_temp, period_covered, download_directory='/tmp'):
+def scrape(url, weather_station, base_temp, period_covered, download_directory="/tmp"):
     """
 
     :param str url:
@@ -97,14 +102,18 @@ def scrape(url, weather_station, base_temp, period_covered, download_directory='
 
     options.set_preference("browser.download.dir", download_directory)
 
-    downloadable_mimetypes = ', '.join([
-        'application/csv',
-        'application/pdf',
-        'application/zip',
-        'text/csv',
-        'text/plain',
-    ])
-    options.set_preference("browser.helperApps.neverAsk.saveToDisk", downloadable_mimetypes)
+    downloadable_mimetypes = ", ".join(
+        [
+            "application/csv",
+            "application/pdf",
+            "application/zip",
+            "text/csv",
+            "text/plain",
+        ]
+    )
+    options.set_preference(
+        "browser.helperApps.neverAsk.saveToDisk", downloadable_mimetypes
+    )
 
     driver = webdriver.Firefox(options=options)  # type: WebDriver
     driver.get(url)
@@ -126,9 +135,13 @@ def scrape(url, weather_station, base_temp, period_covered, download_directory='
     btn.click()
 
     # wait for data to be ready
-    label = (By.CSS_SELECTOR, 'table.dataStatusPanel div.gwt-Label')
-    WebDriverWait(driver, 30).until(ec.text_to_be_present_in_element(label, 'Your degree days are ready'))
-    download_btn = driver.find_element_by_css_selector('table.dataStatusPanel div.downloadPanel button.gwt-Button')
+    label = (By.CSS_SELECTOR, "table.dataStatusPanel div.gwt-Label")
+    WebDriverWait(driver, 30).until(
+        ec.text_to_be_present_in_element(label, "Your degree days are ready")
+    )
+    download_btn = driver.find_element_by_css_selector(
+        "table.dataStatusPanel div.downloadPanel button.gwt-Button"
+    )
     download_btn.click()
 
     time.sleep(1)  # hack to give browser time to save file
@@ -148,16 +161,25 @@ def all_displayed_dropdowns_loaded(driver):
     """
     dropdowns = driver.find_elements_by_css_selector(GWT_LIST_BOX_CSS)
     displayed_dropdowns = [select for select in dropdowns if select.is_displayed()]
-    options_loaded = [len(select.find_elements_by_css_selector('option')) > 0 for select in displayed_dropdowns]
+    options_loaded = [
+        len(select.find_elements_by_css_selector("option")) > 0
+        for select in displayed_dropdowns
+    ]
     all_options_loaded = all(options_loaded)
     return all_options_loaded
 
 
 def wait_for_gwt_panel(driver):
     timeout = 30
-    WebDriverWait(driver, timeout).until(ec.presence_of_element_located((By.CSS_SELECTOR, WEATHER_STATION_CSS)))
-    WebDriverWait(driver, timeout).until(lambda_succeeds(all_displayed_dropdowns_loaded))
-    WebDriverWait(driver, timeout).until(ec.presence_of_element_located((By.CSS_SELECTOR, GWT_SUBMIT_BUTTON_CSS)))
+    WebDriverWait(driver, timeout).until(
+        ec.presence_of_element_located((By.CSS_SELECTOR, WEATHER_STATION_CSS))
+    )
+    WebDriverWait(driver, timeout).until(
+        lambda_succeeds(all_displayed_dropdowns_loaded)
+    )
+    WebDriverWait(driver, timeout).until(
+        ec.presence_of_element_located((By.CSS_SELECTOR, GWT_SUBMIT_BUTTON_CSS))
+    )
 
 
 if __name__ == "__main__":
